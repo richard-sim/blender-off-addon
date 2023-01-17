@@ -41,13 +41,12 @@ from bpy_extras.io_utils import (ImportHelper,
 bl_info = {
     "name": "OFF format",
     "description": "Import-Export OFF, Import/export simple OFF mesh.",
-    "author": "Alex Tsui, Mateusz Kłoczko",
-    "version": (0, 4, 0),
-    "blender": (2, 82, 7),
+    "author": "Richard Sim, brothermechanic, A-Metaphysical-Drama, Alex Tsui, Mateusz Kłoczko",
+    "version": (0, 5, 0),
+    "blender": (2, 91, 0),
     "location": "File > Import-Export",
     "warning": "", # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
-                "Scripts/My_Script",
+    "wiki_url": "https://github.com/richard-sim/blender-off-addon/",
     "category": "Import-Export"}
 
 class ImportOFF(bpy.types.Operator, ImportHelper):
@@ -55,12 +54,12 @@ class ImportOFF(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.off"
     bl_label = "Import OFF Mesh"
     filename_ext = ".off"
-    filter_glob = StringProperty(
+    filter_glob: StringProperty(
         default="*.off",
         options={'HIDDEN'},
     )
 
-    axis_forward = EnumProperty(
+    axis_forward: EnumProperty(
             name="Forward",
             items=(('X', "X Forward", ""),
                    ('Y', "Y Forward", ""),
@@ -71,7 +70,7 @@ class ImportOFF(bpy.types.Operator, ImportHelper):
                    ),
             default='Y',
             )
-    axis_up = EnumProperty(
+    axis_up: EnumProperty(
             name="Up",
             items=(('X', "X Up", ""),
                    ('Y', "Y Up", ""),
@@ -98,9 +97,10 @@ class ImportOFF(bpy.types.Operator, ImportHelper):
         if not mesh:
             return {'CANCELLED'}
 
-        scene = bpy.context.scene
         obj = bpy.data.objects.new(mesh.name, mesh)
-        scene.collection.objects.link(obj)
+        context.view_layer.active_layer_collection.collection.objects.link(obj)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
 
         obj.matrix_world = global_matrix
 
@@ -113,14 +113,14 @@ class ExportOFF(bpy.types.Operator, ExportHelper):
     """Save an OFF Mesh file"""
     bl_idname = "export_mesh.off"
     bl_label = "Export OFF Mesh"
-    filter_glob = StringProperty(
+    filter_glob: StringProperty(
         default="*.off",
         options={'HIDDEN'},
     )
     check_extension = True
     filename_ext = ".off"
 
-    axis_forward = EnumProperty(
+    axis_forward: EnumProperty(
             name="Forward",
             items=(('X', "X Forward", ""),
                    ('Y', "Y Forward", ""),
@@ -131,7 +131,7 @@ class ExportOFF(bpy.types.Operator, ExportHelper):
                    ),
             default='Y',
             )
-    axis_up = EnumProperty(
+    axis_up: EnumProperty(
             name="Up",
             items=(('X', "X Up", ""),
                    ('Y', "Y Up", ""),
@@ -142,7 +142,7 @@ class ExportOFF(bpy.types.Operator, ExportHelper):
                    ),
             default='Z',
             )
-    use_colors = BoolProperty(
+    use_colors: BoolProperty(
             name="Vertex Colors",
             description="Export the active vertex color layer",
             default=False,
@@ -211,7 +211,7 @@ def load(operator, context, filepath):
              py = bits[1]
              pz = bits[2]
              if use_colors:
-                 colors.append([float(bits[3]) / 255, float(bits[4]) / 255, float(bits[5]) / 255])
+                 colors.append([float(bits[3]) / 255, float(bits[4]) / 255, float(bits[5]) / 255, 1.0])
 
         except ValueError:
             i=i+1
@@ -254,6 +254,7 @@ def load(operator, context, filepath):
         for i, facet in enumerate(mesh.polygons):
             for j, vidx in enumerate(facet.vertices):
                 color_data.data[3*i + j].color = colors[vidx]
+        color_data.active = True
 
     return mesh
 
@@ -263,32 +264,34 @@ def save(operator, context, filepath,
     # Export the selected mesh
     if global_matrix is None:
         global_matrix = mathutils.Matrix()
-    scene = context.scene
     obj = bpy.context.view_layer.objects.active
-    mesh = obj.to_mesh()
+    if not obj:
+        return {'FINISHED'}
+    mesh = obj.evaluated_get(context.evaluated_depsgraph_get()).to_mesh()
 
     # Apply the inverse transformation
     obj_mat = obj.matrix_world
     mesh.transform(global_matrix @ obj_mat)
 
     verts = mesh.vertices[:]
-    facets = [ f for f in mesh.polygons ]
+    mesh.calc_loop_triangles()
+    facets = [ f for f in mesh.loop_triangles ]
     # Collect colors by vertex id
     colors = False
     vertex_colors = None
     if use_colors:
-        colors = mesh.tessface_vertex_colors.active
+        colors = mesh.vertex_colors.active
     if colors:
         colors = colors.data
         vertex_colors = {}
-        for i, facet in enumerate(mesh.polygons):
-            color = colors[i]
-            color = color.color1[:], color.color2[:], color.color3[:], color.color4[:]
+        for i, facet in enumerate(mesh.loop_triangles):
             for j, vidx in enumerate(facet.vertices):
                 if vidx not in vertex_colors:
-                    vertex_colors[vidx] = (int(color[j][0] * 255.0),
-                                            int(color[j][1] * 255.0),
-                                            int(color[j][2] * 255.0))
+                    lidx = facet.loops[j]
+                    color = colors[lidx].color
+                    vertex_colors[vidx] = (int(color[0] * 255.0),
+                                            int(color[1] * 255.0),
+                                            int(color[2] * 255.0))
     else:
         use_colors = False
 
@@ -310,7 +313,7 @@ def save(operator, context, filepath,
         fp.write('\n')
 
     #for facet in facets:
-    for i, facet in enumerate(mesh.polygons):
+    for i, facet in enumerate(mesh.loop_triangles):
         fp.write('%d' % len(facet.vertices))
         for vid in facet.vertices:
             fp.write(' %d' % vid)
