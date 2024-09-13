@@ -42,7 +42,7 @@ bl_info = {
     "name": "OFF format",
     "description": "Import-Export OFF, Import/export simple OFF mesh.",
     "author": "Richard Sim, brothermechanic, A-Metaphysical-Drama, Alex Tsui, Mateusz Kłoczko",
-    "version": (0, 5, 0),
+    "version": (0, 5, 1),
     "blender": (2, 91, 0),
     "location": "File > Import-Export",
     "warning": "", # used for warning icon and text in addons panel
@@ -200,7 +200,7 @@ def load(operator, context, filepath):
     verts = []
     facets = []
     edges = []
-    i=0;
+    i=0
     while i<vcount:
         line = file.readline()
         if line.isspace():
@@ -219,18 +219,19 @@ def load(operator, context, filepath):
         verts.append((px, py, pz))
         i=i+1
 
-    i=0;
+    i=0
     while i<fcount:
         line = file.readline()
         if line.isspace():
             continue    # skip empty lines
         try:
             splitted  = line.split()
-            ids   = list(map(int, splitted))
-            if len(ids) > 3:
-                facets.append(tuple(ids[1:]))
-            elif len(ids) == 3:
-                edges.append(tuple(ids[1:]))
+            n = int(splitted[0])
+            ids = tuple(map(int,splitted[1:n+1]))
+            if n > 2:
+                facets.append(ids)
+            elif n == 2:
+                edges.append(ids)
         except ValueError:
             i=i+1
             continue
